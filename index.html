@@ -18,7 +18,7 @@
 </head>
 <body>
 
-  <h1>🛠 DevsOffice Plugin Admin submenu and Devsoffice core plugin required</h1>
+  <h1>🛠 DevsOffice Plugin Generator</h1>
 
   <div class="tab-buttons">
     <button onclick="switchTab('adminMenuTab')">Admin Menu Generator</button>
@@ -27,7 +27,7 @@
 
   <!-- Admin Menu Generator -->
   <div class="tab-content active" id="adminMenuTab">
-    <label>Unique Prefix (used in function names)</label>
+    <label>Unique Prefix (used in class/function names)</label>
     <input type="text" id="am_prefix" value="devsplugin">
 
     <label>Admin Menu Name</label>
@@ -36,6 +36,8 @@
     <label>Parent Menu Slug</label>
     <input type="text" id="am_parentSlug" value="devsoffice-core-tools">
 
+    <label><input style="display:inline-block;width:max-content;" type="checkbox" id="am_oop"> Generate OOP Format</label>
+
     <button onclick="generateAdminMenu()">Generate Admin Menu Code</button>
 
     <pre id="adminMenuOutput"></pre>
@@ -43,7 +45,7 @@
 
   <!-- Dependency Checker Generator -->
   <div class="tab-content" id="dependencyTab">
-    <label>Unique Prefix (used in function/variable names)</label>
+    <label>Unique Prefix (used in class/function names)</label>
     <input type="text" id="dep_prefix" value="devsplugin">
 
     <label>Dependency Plugin Path (folder/plugin.php)</label>
@@ -54,6 +56,8 @@
 
     <label>Download Link</label>
     <input type="text" id="dep_downloadURL" value="https://forms.gle/XiUmfVCAAUoBGz1F7">
+
+    <label><input style="display:inline-block;width:max-content;" type="checkbox" id="dep_oop"> Generate OOP Format</label>
 
     <button onclick="generateDependencyCode()">Generate Dependency Code</button>
 
@@ -70,13 +74,58 @@
       return str.toLowerCase().replace(/[^a-z0-9_]/g, '_');
     }
 
+    function ucfirst(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
     function generateAdminMenu() {
       const prefix = sanitize(document.getElementById('am_prefix').value.trim());
       const menuName = document.getElementById('am_menuName').value.trim();
       const parentSlug = document.getElementById('am_parentSlug').value.trim();
       const menuSlug = `${prefix}_menu`;
+      const useOOP = document.getElementById('am_oop').checked;
+      const className = ucfirst(prefix) + '_Admin_Menu';
 
-      const code = `
+      let code = '';
+
+      if (useOOP) {
+        code = `
+class ${className} {
+    public function __construct() {
+        add_action('admin_menu', [ $this, 'register_menu' ], 20);
+    }
+
+    public function register_menu() {
+        global $menu;
+        $found = false;
+        foreach ($menu as $item) {
+            if (isset($item[2]) && $item[2] === '${parentSlug}') {
+                $found = true;
+                break;
+            }
+        }
+
+        if ($found) {
+            add_submenu_page(
+                '${parentSlug}',
+                '${menuName}',
+                '${menuName}',
+                'manage_options',
+                '${menuSlug}',
+                [ $this, 'render_page' ]
+            );
+        }
+    }
+
+    public function render_page() {
+        echo '<div class="wrap"><h1>${menuName}</h1><p>Welcome to the ${menuName} admin page.</p></div>';
+    }
+}
+
+new ${className}();
+        `.trim();
+      } else {
+        code = `
 add_action('admin_menu', '${prefix}_register_menu', 20);
 
 function ${prefix}_register_menu() {
@@ -105,7 +154,8 @@ function ${prefix}_register_menu() {
 function ${prefix}_admin_page_callback() {
     echo '<div class="wrap"><h1>${menuName}</h1><p>Welcome to the ${menuName} admin page.</p></div>';
 }
-      `.trim();
+        `.trim();
+      }
 
       document.getElementById('adminMenuOutput').textContent = code;
     }
@@ -115,8 +165,58 @@ function ${prefix}_admin_page_callback() {
       const pluginPath = document.getElementById('dep_pluginPath').value.trim();
       const noticeText = document.getElementById('dep_noticeText').value.trim();
       const downloadURL = document.getElementById('dep_downloadURL').value.trim();
+      const useOOP = document.getElementById('dep_oop').checked;
+      const className = ucfirst(prefix) + '_Dependency_Check';
 
-      const code = `
+      let code = '';
+
+      if (useOOP) {
+        code = `
+class ${className} {
+    public function __construct() {
+        $this->check_dependency();
+    }
+
+    private function check_dependency() {
+        if (!function_exists('is_plugin_active')) {
+            include_once(ABSPATH . 'wp-admin/includes/plugin.php');
+        }
+
+        $plugin = '${pluginPath}';
+
+        if (!is_plugin_active($plugin)) {
+            if (isset($_GET['activate'])) {
+                unset($_GET['activate']);
+            }
+
+            add_action('admin_notices', function () use ($plugin) {
+                $download_url = '${downloadURL}';
+                $plugin_file = WP_PLUGIN_DIR . '/' . $plugin;
+                $is_installed = file_exists($plugin_file);
+                ?>
+                <div class="notice notice-error">
+                    <p><strong>${noticeText}</strong></p>
+                    <?php if ($is_installed): ?>
+                        <p><a href="<?php echo esc_url(
+                            wp_nonce_url(admin_url('plugins.php?action=activate&plugin=' . $plugin), 'activate-plugin_' . $plugin)
+                        ); ?>" class="button-primary">Activate Now</a></p>
+                    <?php else: ?>
+                        <p><a href="<?php echo esc_url($download_url); ?>" target="_blank" class="button-primary">Download Plugin</a></p>
+                    <?php endif; ?>
+                </div>
+                <?php
+            });
+
+            deactivate_plugins(plugin_basename(__FILE__));
+            return;
+        }
+    }
+}
+
+new ${className}();
+        `.trim();
+      } else {
+        code = `
 if (!function_exists('is_plugin_active')) {
     include_once(ABSPATH . 'wp-admin/includes/plugin.php');
 }
@@ -136,15 +236,11 @@ if (!is_plugin_active($${prefix}_core_path)) {
         <div class="notice notice-error">
             <p><strong>${noticeText}</strong></p>
             <?php if ($${prefix}_is_installed): ?>
-                <p>
-                    <a href="<?php echo esc_url(
-                        wp_nonce_url(admin_url('plugins.php?action=activate&plugin=' . $${prefix}_core_path), 'activate-plugin_' . $${prefix}_core_path)
-                    ); ?>" class="button-primary">Activate Now</a>
-                </p>
+                <p><a href="<?php echo esc_url(
+                    wp_nonce_url(admin_url('plugins.php?action=activate&plugin=' . $${prefix}_core_path), 'activate-plugin_' . $${prefix}_core_path)
+                ); ?>" class="button-primary">Activate Now</a></p>
             <?php else: ?>
-                <p>
-                    <a href="<?php echo esc_url($${prefix}_download_url); ?>" class="button-primary" target="_blank">Download Plugin</a>
-                </p>
+                <p><a href="<?php echo esc_url($${prefix}_download_url); ?>" target="_blank" class="button-primary">Download Plugin</a></p>
             <?php endif; ?>
         </div>
         <?php
@@ -153,7 +249,8 @@ if (!is_plugin_active($${prefix}_core_path)) {
     deactivate_plugins(plugin_basename(__FILE__));
     return;
 }
-      `.trim();
+        `.trim();
+      }
 
       document.getElementById('dependencyOutput').textContent = code;
     }
