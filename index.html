@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DevsOffice Plugin Generator Tool</title>
+  <style>
+    body { font-family: sans-serif; max-width: 1000px; margin: 30px auto; padding: 2rem; background: #f4f6f8; }
+    input, textarea { width: 100%; padding: 10px; margin: 8px 0 16px; font-size: 16px; }
+    label { font-weight: bold; display: block; margin-top: 10px; }
+    button { padding: 10px 20px; background: #0073aa; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 15px; }
+    button:hover { background: #005177; }
+    pre { background: #f1f1f1; padding: 16px; border-radius: 6px; white-space: pre-wrap; margin-top: 20px; font-size: 14px; }
+    .tab-buttons button { margin-right: 10px; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    h1 { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+
+  <h1>🛠 DevsOffice Plugin Admin submenu and Devsoffice core plugin required</h1>
+
+  <div class="tab-buttons">
+    <button onclick="switchTab('adminMenuTab')">Admin Menu Generator</button>
+    <button onclick="switchTab('dependencyTab')">Dependency Checker Generator</button>
+  </div>
+
+  <!-- Admin Menu Generator -->
+  <div class="tab-content active" id="adminMenuTab">
+    <label>Unique Prefix (used in function names)</label>
+    <input type="text" id="am_prefix" value="devsplugin">
+
+    <label>Admin Menu Name</label>
+    <input type="text" id="am_menuName" value="Woo Downloads">
+
+    <label>Parent Menu Slug</label>
+    <input type="text" id="am_parentSlug" value="devsoffice-core-tools">
+
+    <button onclick="generateAdminMenu()">Generate Admin Menu Code</button>
+
+    <pre id="adminMenuOutput"></pre>
+  </div>
+
+  <!-- Dependency Checker Generator -->
+  <div class="tab-content" id="dependencyTab">
+    <label>Unique Prefix (used in function/variable names)</label>
+    <input type="text" id="dep_prefix" value="devsplugin">
+
+    <label>Dependency Plugin Path (folder/plugin.php)</label>
+    <input type="text" id="dep_pluginPath" value="devsofficecore/devsofficecore.php">
+
+    <label>Dependency Notice Text</label>
+    <input type="text" id="dep_noticeText" value="This plugin requires Devsoffice Core plugin to be installed and activated.">
+
+    <label>Download Link</label>
+    <input type="text" id="dep_downloadURL" value="https://forms.gle/XiUmfVCAAUoBGz1F7">
+
+    <button onclick="generateDependencyCode()">Generate Dependency Code</button>
+
+    <pre id="dependencyOutput"></pre>
+  </div>
+
+  <script>
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    function sanitize(str) {
+      return str.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    }
+
+    function generateAdminMenu() {
+      const prefix = sanitize(document.getElementById('am_prefix').value.trim());
+      const menuName = document.getElementById('am_menuName').value.trim();
+      const parentSlug = document.getElementById('am_parentSlug').value.trim();
+      const menuSlug = `${prefix}_menu`;
+
+      const code = `
+add_action('admin_menu', '${prefix}_register_menu', 20);
+
+function ${prefix}_register_menu() {
+    global $menu;
+    $${prefix}_menu_found = false;
+
+    foreach ($menu as $${prefix}_item) {
+        if (isset($${prefix}_item[2]) && $${prefix}_item[2] === '${parentSlug}') {
+            $${prefix}_menu_found = true;
+            break;
+        }
+    }
+
+    if ($${prefix}_menu_found) {
+        add_submenu_page(
+            '${parentSlug}',
+            '${menuName}',
+            '${menuName}',
+            'manage_options',
+            '${menuSlug}',
+            '${prefix}_admin_page_callback'
+        );
+    }
+}
+
+function ${prefix}_admin_page_callback() {
+    echo '<div class="wrap"><h1>${menuName}</h1><p>Welcome to the ${menuName} admin page.</p></div>';
+}
+      `.trim();
+
+      document.getElementById('adminMenuOutput').textContent = code;
+    }
+
+    function generateDependencyCode() {
+      const prefix = sanitize(document.getElementById('dep_prefix').value.trim());
+      const pluginPath = document.getElementById('dep_pluginPath').value.trim();
+      const noticeText = document.getElementById('dep_noticeText').value.trim();
+      const downloadURL = document.getElementById('dep_downloadURL').value.trim();
+
+      const code = `
+if (!function_exists('is_plugin_active')) {
+    include_once(ABSPATH . 'wp-admin/includes/plugin.php');
+}
+
+$${prefix}_core_path = '${pluginPath}';
+
+if (!is_plugin_active($${prefix}_core_path)) {
+    if (isset($_GET['activate'])) {
+        unset($_GET['activate']);
+    }
+
+    add_action('admin_notices', function () use ($${prefix}_core_path) {
+        $${prefix}_download_url = '${downloadURL}';
+        $${prefix}_plugin_file = WP_PLUGIN_DIR . '/' . $${prefix}_core_path;
+        $${prefix}_is_installed = file_exists($${prefix}_plugin_file);
+        ?>
+        <div class="notice notice-error">
+            <p><strong>${noticeText}</strong></p>
+            <?php if ($${prefix}_is_installed): ?>
+                <p>
+                    <a href="<?php echo esc_url(
+                        wp_nonce_url(admin_url('plugins.php?action=activate&plugin=' . $${prefix}_core_path), 'activate-plugin_' . $${prefix}_core_path)
+                    ); ?>" class="button-primary">Activate Now</a>
+                </p>
+            <?php else: ?>
+                <p>
+                    <a href="<?php echo esc_url($${prefix}_download_url); ?>" class="button-primary" target="_blank">Download Plugin</a>
+                </p>
+            <?php endif; ?>
+        </div>
+        <?php
+    });
+
+    deactivate_plugins(plugin_basename(__FILE__));
+    return;
+}
+      `.trim();
+
+      document.getElementById('dependencyOutput').textContent = code;
+    }
+  </script>
+
+</body>
+</html>
