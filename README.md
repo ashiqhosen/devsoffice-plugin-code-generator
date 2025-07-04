@@ -1,0 +1,1 @@
+# devsoffice-plugin-code-generator
